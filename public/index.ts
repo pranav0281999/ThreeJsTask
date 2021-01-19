@@ -46,7 +46,8 @@ function main() {
     const planeMat = new THREE.ShaderMaterial({
         uniforms: uniforms,
         vertexShader: vertShader,
-        fragmentShader: fragShader
+        fragmentShader: fragShader,
+        side: THREE.DoubleSide
     });
 
     const planeGeo = new THREE.PlaneGeometry(1, 1);
@@ -98,7 +99,13 @@ function main() {
             vector.unproject(camera);
             vector.sub(camera.position);
 
+            let distance = vector
+
             if (evt.deltaY < 0) {
+                if (camera.position.distanceTo(intersects[0].point) < 1) {
+                    return;
+                }
+
                 camera.position.addVectors(camera.position, vector.setLength(factor));
                 controls.target.addVectors(controls.target, vector.setLength(factor));
             } else {
