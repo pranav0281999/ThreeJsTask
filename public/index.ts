@@ -4,6 +4,8 @@ import {OrbitControls} from 'three/examples/jsm/controls/OrbitControls';
 function main() {
     addEventListener("wheel", onMouseWheel);
 
+    let textureLoadCount = 0;
+
     const canvas: HTMLCanvasElement = document.querySelector('#c');
     const renderer = new THREE.WebGLRenderer({canvas: canvas});
 
@@ -25,13 +27,15 @@ function main() {
 
     const scene = new THREE.Scene();
 
-    {
-        const color = 0xFFFFFF;
-        const intensity = 1;
-        const light = new THREE.DirectionalLight(color, intensity);
-        light.position.set(-1, 2, 4);
-        scene.add(light);
-    }
+    //Render target to use as texture for spline
+    const rtWidth = 512;
+    const rtHeight = 512;
+    const renderTarget = new THREE.WebGLRenderTarget(rtWidth, rtHeight);
+
+    const rtCamera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0.1, 0.3);
+    rtCamera.position.z = 0.2;
+
+    const rtScene = new THREE.Scene();
 
     const axesHelper = new THREE.AxesHelper(1);
     scene.add(axesHelper);
@@ -39,9 +43,16 @@ function main() {
     const loader = new THREE.TextureLoader();
 
     let uniforms = {
-        tOne: {type: "t", value: loader.load("resources/somepng.png")},
-        tSec: {type: "t", value: loader.load("resources/somebackground.jpeg")}
+        tOne: {type: "t", value: loader.load("resources/somepng.png", textureLoaded)},
+        tSec: {type: "t", value: loader.load("resources/somebackground.jpeg", textureLoaded)}
     };
+
+    //counting the loaded textures to stop redundant rendering of render target scene
+    function textureLoaded(texture) {
+        setTimeout(() => {
+            textureLoadCount++;
+        }, 10);
+    }
 
     const planeMat = new THREE.ShaderMaterial({
         uniforms: uniforms,
@@ -52,8 +63,16 @@ function main() {
 
     const planeGeo = new THREE.PlaneGeometry(1, 1);
     const planeMesh = new THREE.Mesh(planeGeo, planeMat);
-
     scene.add(planeMesh);
+
+    //plane inside render target scene, setup with orthogonal camera to cover the scene completely
+    const rtPlaneMesh = new THREE.Mesh(planeGeo, planeMat);
+    rtScene.add(rtPlaneMesh);
+
+    //using render target as texture
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map: renderTarget.texture}));
+    sprite.position.set(1, 0, 0);
+    scene.add(sprite);
 
     function resizeRendererToDisplaySize(renderer) {
         const canvas = renderer.domElement;
@@ -78,6 +97,12 @@ function main() {
 
         controls.update();
 
+        if (textureLoadCount < 2) {
+            renderer.setRenderTarget(renderTarget);
+            renderer.render(rtScene, rtCamera);
+            renderer.setRenderTarget(null);
+        }
+
         renderer.render(scene, camera);
 
         requestAnimationFrame(render);
@@ -99,15 +124,11 @@ function main() {
             vector.unproject(camera);
             vector.sub(camera.position);
 
-            let distance = vector
-
             if (evt.deltaY < 0) {
-                if (camera.position.distanceTo(intersects[0].point) < 1) {
-                    return;
+                if (camera.position.distanceTo(intersects[0].point) > 1) {
+                    camera.position.addVectors(camera.position, vector.setLength(factor));
+                    controls.target.addVectors(controls.target, vector.setLength(factor));
                 }
-
-                camera.position.addVectors(camera.position, vector.setLength(factor));
-                controls.target.addVectors(controls.target, vector.setLength(factor));
             } else {
                 camera.position.subVectors(camera.position, vector.setLength(factor));
                 controls.target.subVectors(controls.target, vector.setLength(factor));
